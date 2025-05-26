@@ -1,0 +1,2016 @@
+# Project Directory Structure:
+.
+├── .gptree_config
+├── App.tsx
+├── api/
+│   └── axios.ts
+├── components/
+│   └── layout/
+│       └── DashboardLayout.tsx
+├── features/
+│   ├── admin/
+│   │   ├── AIConfigPage.tsx
+│   │   └── ProvidersPage.tsx
+│   ├── auth/
+│   │   └── LoginPage.tsx
+│   ├── rfps/
+│   │   ├── RFPCreateModal.tsx
+│   │   ├── RFPDetailPage.tsx
+│   │   ├── RFPListPage.tsx
+│   │   └── components/
+│   │       └── VendorMatchAnalysis.tsx
+│   ├── users/
+│   │   ├── ProfilePage.tsx
+│   │   └── UsersAdminPage.tsx
+│   └── vendors/
+│       └── VendorsListPage.tsx
+├── hooks/
+│   └── useAuth.ts
+├── index.css
+└── main.tsx
+
+# BEGIN FILE CONTENTS
+
+# File: features/admin/ProvidersPage.tsx
+
+import React, { useState, useEffect } from 'react';
+import api from '../../api/axios';
+import { useAuth } from '../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+
+type Provider = {
+  id: number;
+  name: string;
+  model: string;
+  api_key: string;
+  is_selected: boolean;
+};
+
+const ProvidersPage: React.FC = () => {
+  const { perfil } = useAuth();
+  const navigate = useNavigate();
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [name, setName] = useState('');
+  const [model, setModel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (perfil !== 'admin') {
+      navigate('/');
+      return;
+    }
+    fetchProviders();
+  }, [perfil, navigate]);
+
+  const fetchProviders = async () => {
+    try {
+      const res = await api.get<Provider[]>('/admin/config/providers');
+      setProviders(res.data);
+    } catch {
+      setError('Falha ao carregar provedores');
+    }
+  };
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !model || !apiKey) return;
+    try {
+      await api.post<Provider>('/admin/config/providers', { name, model, api_key: apiKey });
+      setName(''); setModel(''); setApiKey('');
+      fetchProviders();
+    } catch {
+      setError('Erro ao criar provedor');
+    }
+  };
+
+  const handleSelect = async (id: number) => {
+    try {
+      await api.patch(`/admin/config/providers/${id}/select`);
+      fetchProviders();
+    } catch {
+      setError('Erro ao selecionar provedor');
+    }
+  };
+
+  return (
+    <div className="p-4 max-w-xl mx-auto">
+      <h2 className="text-2xl font-semibold mb-4">Provedores de IA</h2>
+      {error && <div className="text-red-500 mb-2">{error}</div>}
+      <table className="w-full mb-6 table-auto">
+        <thead>
+          <tr>
+            <th></th>
+            <th className="text-left">Nome</th>
+            <th className="text-left">Modelo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {providers.map(p => (
+            <tr key={p.id} className="border-t">
+              <td className="p-2">
+                <input
+                  type="radio"
+                  name="prov"
+                  checked={p.is_selected}
+                  onChange={() => handleSelect(p.id)}
+                />
+              </td>
+              <td className="p-2">{p.name}</td>
+              <td className="p-2">{p.model}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <form onSubmit={handleAdd} className="space-y-4">
+        <div>
+          <label className="block font-medium">Nome</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            className="border p-2 w-full rounded"
+            required
+          />
+        </div>
+        <div>
+          <label className="block font-medium">Modelo</label>
+          <input
+            type="text"
+            value={model}
+            onChange={e => setModel(e.target.value)}
+            className="border p-2 w-full rounded"
+            required
+          />
+        </div>
+        <div>
+          <label className="block font-medium">API Key</label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            className="border p-2 w-full rounded"
+            required
+          />
+        </div>
+        <button type="submit" className="bg-primary text-white px-4 py-2 rounded">
+          Adicionar Provedor
+        </button>
+      </form>
+    </div>
+  );
+};
+
+export default ProvidersPage;
+
+
+# END FILE CONTENTS
+
+
+# File: features/admin/AIConfigPage.tsx
+
+import React, { useState, useEffect } from 'react';
+import api from '../../api/axios';
+import { useAuth } from '../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+
+type Config = { id: number; provider: string; model: string; };
+
+const AIConfigPage: React.FC = () => {
+  const { perfil } = useAuth();
+  const navigate = useNavigate();
+  const [provider, setProvider] = useState('');
+  const [model, setModel] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (perfil !== 'admin') {
+      navigate('/');
+      return;
+    }
+    const fetchConfig = async () => {
+      try {
+        const res = await api.get<Config>('/admin/config/ai');
+        setProvider(res.data.provider);
+        setModel(res.data.model);
+      } catch (error: any) {
+        if (error.response?.status !== 404) {
+          setError('Não foi possível carregar configuração');
+        }
+      }
+    };
+    fetchConfig();
+  }, [perfil, navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      await api.post<Config>('/admin/config/ai', { provider, model });
+      setSuccess('Configuração salva com sucesso');
+    } catch {
+      setError('Erro ao salvar configuração');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-4 max-w-lg mx-auto">
+      <h2 className="text-2xl font-semibold mb-4">Configuração de IA</h2>
+      {error && <div className="text-red-500 mb-2">{error}</div>}
+      {success && <div className="text-green-500 mb-2">{success}</div>}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block font-medium">Provedor</label>
+          <input
+            type="text"
+            value={provider}
+            onChange={e => setProvider(e.target.value)}
+            className="border p-2 w-full rounded"
+            required
+          />
+        </div>
+        <div>
+          <label className="block font-medium">Modelo</label>
+          <input
+            type="text"
+            value={model}
+            onChange={e => setModel(e.target.value)}
+            className="border p-2 w-full rounded"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="bg-primary text-white px-4 py-2 rounded"
+        >
+          {loading ? 'Salvando...' : 'Salvar'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+export default AIConfigPage;
+
+
+# END FILE CONTENTS
+
+
+# File: .gptree_config
+
+# GPTree Local Config
+version: 2
+
+# Whether to use .gitignore
+useGitIgnore: true
+# File types to include (e.g., .py,.js)
+includeFileTypes: *
+# File types to exclude when includeFileTypes is '*'
+excludeFileTypes: 
+# Output file name
+outputFile: gptree_output.txt
+# Whether to output the file locally or relative to the project directory
+outputFileLocally: true
+# Whether to copy the output to the clipboard
+copyToClipboard: false
+# Whether to use safe mode (prevent overly large files from being combined)
+safeMode: true
+# Whether to store the files chosen in the config file (--save, -s)
+storeFilesChosen: true
+# Whether to include line numbers in the output (--line-numbers, -n)
+lineNumbers: false
+# Whether to show ignored files in the directory tree
+showIgnoredInTree: false
+# Whether to show only default ignored files in the directory tree while still respecting gitignore
+showDefaultIgnoredInTree: false
+# Previously selected files (when using the -s or --save flag previously)
+previousFiles: 
+
+
+# END FILE CONTENTS
+
+
+# File: App.tsx
+
+import React from 'react';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import LoginPage from './features/auth/LoginPage';
+import DashboardLayout from './components/layout/DashboardLayout';
+import RFPListPage from './features/rfps/RFPListPage';
+import RFPDetailPage from './features/rfps/RFPDetailPage';
+import VendorsListPage from './features/vendors/VendorsListPage';
+import ProfilePage from './features/users/ProfilePage';
+import UsersAdminPage from './features/users/UsersAdminPage';
+import ProvidersPage from './features/admin/ProvidersPage';
+import { useAuth } from './hooks/useAuth';
+
+function ProtectedRoute() {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return <Outlet />;
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<ProtectedRoute />}> {/* Rotas protegidas */}
+        <Route path="/" element={<DashboardLayout />}>
+          <Route index element={<RFPListPage />} />
+          <Route path="rfps/:id" element={<RFPDetailPage />} />
+          <Route path="fornecedores" element={<VendorsListPage />} />
+          <Route path="perfil" element={<ProfilePage />} />
+          <Route path="usuarios" element={<UsersAdminPage />} />
+          <Route path="admin/config/providers" element={<ProvidersPage />} />
+          {/* Outras rotas: propostas, usuários, etc */}
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
+}
+
+export default App;
+
+
+# END FILE CONTENTS
+
+
+# File: features/users/ProfilePage.tsx
+
+import React, { useState, useEffect } from 'react';
+import api from '../../api/axios';
+import { useAuth } from '../../hooks/useAuth';
+
+const ProfilePage: React.FC = () => {
+  const { nome, perfil } = useAuth();
+  const [form, setForm] = useState({ nome: '', senha: '', novaSenha: '', confirmarSenha: '' });
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setForm(f => ({ ...f, nome: nome || '' }));
+  }, [nome]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (form.novaSenha && form.novaSenha !== form.confirmarSenha) {
+      setError('Nova senha e confirmação não coincidem.');
+      return;
+    }
+    try {
+      await api.put('/users/me', {
+        nome: form.nome,
+        senha_atual: form.senha,
+        nova_senha: form.novaSenha || undefined,
+      });
+      setSuccess('Perfil atualizado com sucesso!');
+      setForm({ ...form, senha: '', novaSenha: '', confirmarSenha: '' });
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Erro ao atualizar perfil.');
+    }
+  };
+
+  return (
+    <div className="max-w-lg mx-auto bg-white p-8 rounded shadow">
+      <h2 className="text-2xl font-bold mb-4">Meu Perfil</h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block mb-1">Nome</label>
+          <input name="nome" value={form.nome} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
+        </div>
+        <div>
+          <label className="block mb-1">Senha atual</label>
+          <input name="senha" type="password" value={form.senha} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
+        </div>
+        <div>
+          <label className="block mb-1">Nova senha</label>
+          <input name="novaSenha" type="password" value={form.novaSenha} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
+        </div>
+        <div>
+          <label className="block mb-1">Confirmar nova senha</label>
+          <input name="confirmarSenha" type="password" value={form.confirmarSenha} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
+        </div>
+        <button type="submit" className="bg-primary text-white px-4 py-2 rounded">Salvar</button>
+        {success && <div className="text-green-600 mt-2">{success}</div>}
+        {error && <div className="text-red-500 mt-2">{error}</div>}
+      </form>
+    </div>
+  );
+};
+
+export default ProfilePage;
+
+
+# END FILE CONTENTS
+
+
+# File: index.css
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply min-h-screen font-sans bg-gradient-to-br from-background via-white to-primary/10 text-foreground antialiased;
+  transition: background 0.6s cubic-bezier(.4,0,.2,1);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  background: #e2e8f0;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #38bdf8 0%, #6366f1 100%);
+  border-radius: 8px;
+}
+
+input, textarea, select {
+  @apply placeholder-gray-400 focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200;
+}
+
+::selection {
+  background: #38bdf8;
+  color: #fff;
+}
+
+
+# END FILE CONTENTS
+
+
+# File: features/rfps/components/VendorMatchAnalysis.tsx
+
+import React, { useEffect, useState } from 'react';
+import api from '../../../api/axios';
+
+interface VendorMatch {
+  vendor: string;
+  score: number;
+  motivo: string;
+  vendor_id?: number;
+}
+
+interface Props {
+  rfpId: number;
+  savedAnalysis?: string;
+  selectedVendorId?: number;
+  onSave: (analysis: string) => void;
+  onSelectVendor: (vendorId: number) => void;
+}
+
+const VendorMatchAnalysis: React.FC<Props> = ({ rfpId, savedAnalysis, selectedVendorId, onSave, onSelectVendor }) => {
+  const [matches, setMatches] = useState<VendorMatch[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedId, setSelectedId] = useState<number | null>(selectedVendorId ?? null);
+  const [analysisJson, setAnalysisJson] = useState('');
+  const [vendorList, setVendorList] = useState<{ id: number; nome: string }[]>([]);
+
+  useEffect(() => {
+    setSelectedId(selectedVendorId ?? null);
+  }, [selectedVendorId]);
+
+  useEffect(() => {
+    api.get('/vendors')
+      .then(res => setVendorList(res.data))
+      .catch(err => console.error('Erro ao carregar vendors', err));
+  }, []);
+
+  useEffect(() => {
+    if (savedAnalysis && vendorList.length) {
+      try {
+        const parsed = JSON.parse(savedAnalysis) as VendorMatch[];
+        // Enriquecer vendor_id se faltante
+        parsed.forEach(item => {
+          if (item.vendor_id == null) {
+            const v = vendorList.find(v => v.nome === item.vendor);
+            if (v) item.vendor_id = v.id;
+          }
+        });
+        parsed.sort((a, b) => b.score - a.score);
+        setMatches(parsed);
+      } catch {
+        setMatches([]);
+      }
+    } else {
+      setMatches([]);
+      setAnalysisJson('');
+    }
+  }, [rfpId, savedAnalysis, vendorList]);
+
+  const handleSave = () => {
+    onSave(analysisJson);
+  };
+
+  const handleSelect = (vendorId: number) => {
+    setSelectedId(vendorId);
+    onSelectVendor(vendorId);
+  };
+
+  const handleAnalyze = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get(`/rfps/${rfpId}/vendors-matching`);
+      const sorted = res.data.sort((a: VendorMatch, b: VendorMatch) => b.score - a.score);
+      setMatches(sorted);
+      setAnalysisJson(JSON.stringify(sorted));
+    } catch {
+      setError('Erro ao obter análise de vendors');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div>Analisando aderência dos vendors...</div>;
+  if (error) return <div>{error}</div>;
+
+  return (
+    <div>
+      <h3 className="font-bold mb-4">Análise de Aderência dos Vendors</h3>
+      {!matches.length && !savedAnalysis && (
+        <button className="bg-primary text-white px-4 py-2 rounded mb-4" onClick={handleAnalyze}>
+          Fazer análise de vendors
+        </button>
+      )}
+      {matches.length > 0 && (
+        <>
+          <table className="min-w-full table-auto mb-4">
+            <thead>
+              <tr>
+                <th>Fabricante</th>
+                <th>Pontuação</th>
+                <th>Motivo</th>
+                <th>Selecionar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matches.map((v, idx) => (
+                <tr key={v.vendor} className={selectedId === v.vendor_id ? 'bg-green-100' : ''}>
+                  <td className="font-semibold">{v.vendor}</td>
+                  <td className="text-center">{v.score}</td>
+                  <td>{v.motivo}</td>
+                  <td>
+                    <button
+                      className={`px-2 py-1 rounded ${selectedId === v.vendor_id ? 'bg-green-400 text-white' : 'bg-gray-200'}`}
+                      onClick={() => handleSelect(v.vendor_id!)}
+                      disabled={selectedId === v.vendor_id}
+                    >Selecionar</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!savedAnalysis && (
+            <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={handleSave}>Salvar análise no dossiê</button>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default VendorMatchAnalysis;
+
+
+# END FILE CONTENTS
+
+
+# File: features/auth/LoginPage.tsx
+
+import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import api from '../../api/axios';
+import { useNavigate } from 'react-router-dom';
+
+const schema = z.object({
+  username: z.string().email({ message: 'E-mail inválido' }),
+  password: z.string().min(3, { message: 'Senha obrigatória' })
+});
+
+type LoginForm = z.infer<typeof schema>;
+
+const LoginPage = () => {
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({ resolver: zodResolver(schema) });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  const onSubmit = async (data: LoginForm) => {
+    setLoading(true);
+    setError('');
+    try {
+      const formData = new URLSearchParams();
+      formData.append('username', data.username);
+      formData.append('password', data.password);
+      const response = await api.post('/auth/login', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+      localStorage.setItem('token', response.data.access_token);
+      localStorage.setItem('perfil', response.data.perfil);
+      localStorage.setItem('nome', response.data.nome);
+      navigate('/');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Falha ao fazer login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+        <h1 className="text-2xl font-bold mb-6 text-center text-primary">Login</h1>
+        <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+          <div>
+            <label className="block mb-1 text-sm font-medium text-gray-700">Email</label>
+            <input type="email" autoComplete="username" {...register('username')} className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary ${errors.username ? 'border-red-500' : ''}`} />
+            {errors.username && <span className="text-red-500 text-xs">{errors.username.message}</span>}
+          </div>
+          <div>
+            <label className="block mb-1 text-sm font-medium text-gray-700">Senha</label>
+            <input type="password" autoComplete="current-password" {...register('password')} className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary ${errors.password ? 'border-red-500' : ''}`} />
+            {errors.password && <span className="text-red-500 text-xs">{errors.password.message}</span>}
+          </div>
+          <button disabled={loading} type="submit" className="w-full bg-primary text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-not-allowed">
+            {loading ? 'Entrando...' : 'Entrar'}
+          </button>
+          {error && <div className="text-red-500 text-center text-sm mt-2">{error}</div>}
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default LoginPage;
+
+
+# END FILE CONTENTS
+
+
+# File: features/rfps/RFPCreateModal.tsx
+
+import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import api from '../../api/axios';
+
+const schema = z.object({
+  nome: z.string().min(3, 'Nome obrigatório'),
+  arquivo: z.any().refine(
+    (fileList) => fileList && fileList.length > 0 && fileList[0] instanceof File && fileList[0].size > 0,
+    'Arquivo obrigatório'
+  ),
+});
+
+type FormData = z.infer<typeof schema>;
+
+interface RFPCreateModalProps {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+const RFPCreateModal: React.FC<RFPCreateModalProps> = ({ open, onClose, onCreated }) => {
+  const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormData>({
+    resolver: zodResolver(schema)
+  });
+  const [error, setError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
+  const onSubmit = async (data: FormData) => {
+    setError('');
+    setUploadProgress(null);
+    try {
+      // 1. Cria a RFP sem arquivo
+      const rfpRes = await api.post('/rfps', {
+        nome: data.nome
+      });
+      // Corrigir: garantir que o ID venha corretamente
+      const rfpId = rfpRes.data?.id || rfpRes.data?.rfp?.id;
+      if (!rfpId || rfpId === 'undefined') {
+        setError('Erro ao obter o ID da RFP criada. Não é possível enviar o arquivo.');
+        setUploadProgress(null);
+        return;
+      }
+      // 2. Faz upload do arquivo
+      const uploadData = new FormData();
+      uploadData.append('file', data.arquivo[0]);
+      await api.post(`/rfps/${rfpId}/upload`, uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent: any) => {
+          if (progressEvent.total) {
+            setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+          }
+        },
+      });
+      setUploadProgress(100);
+      setTimeout(() => setUploadProgress(null), 800);
+      onCreated();
+      onClose();
+      reset();
+    } catch (err: any) {
+      setUploadProgress(null);
+      setError(err?.response?.data?.detail || 'Erro ao criar RFP.');
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md relative animate-fadeIn">
+        <button className="absolute top-4 right-4 text-gray-400 hover:text-primary text-xl font-bold" onClick={onClose}>&times;</button>
+        <h3 className="text-2xl font-bold mb-6 text-primary">Nova RFP</h3>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" encType="multipart/form-data">
+          <div>
+            <label className="block font-medium mb-1">Nome</label>
+            <input {...register('nome')} className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary" />
+            {errors.nome && <span className="text-red-500 text-sm">{errors.nome.message}</span>}
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Arquivo da RFP</label>
+            <input type="file" accept=".pdf,.doc,.docx,.xlsx,.xls" {...register('arquivo')} className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary/90 file:text-white file:font-semibold hover:file:bg-primary" />
+            {errors.arquivo && <span className="text-red-500 text-sm">{String(errors.arquivo.message)}</span>}
+          </div>
+          {error && <div className="text-red-500 text-sm">{error}</div>}
+          {uploadProgress !== null && (
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
+              <div className="bg-gradient-to-r from-primary to-accent h-3 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+            </div>
+          )}
+          <button type="submit" disabled={isSubmitting || uploadProgress !== null} className="w-full bg-gradient-to-r from-primary to-accent text-white py-2 rounded-xl font-bold shadow hover:scale-105 active:scale-95 transition-all mt-2 disabled:opacity-60">
+            {uploadProgress !== null ? `Enviando... ${uploadProgress}%` : isSubmitting ? 'Salvando...' : 'Criar RFP'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default RFPCreateModal;
+
+
+# END FILE CONTENTS
+
+
+# File: hooks/useAuth.ts
+
+import { useCallback } from 'react';
+
+export function useAuth() {
+  const token = localStorage.getItem('token');
+  const nome = localStorage.getItem('nome');
+  const perfil = localStorage.getItem('perfil');
+  const isAuthenticated = !!token;
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('nome');
+    localStorage.removeItem('perfil');
+    window.location.href = '/login';
+  }, []);
+
+  return { isAuthenticated, token, nome, perfil, logout };
+}
+
+
+# END FILE CONTENTS
+
+
+# File: features/rfps/RFPDetailPage.tsx
+
+import React, { useState, useRef, useEffect } from 'react';
+import api from '../../api/axios';
+import { useParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
+import VendorMatchAnalysis from './components/VendorMatchAnalysis';
+
+const RFPDetailPage = () => {
+  const { id } = useParams();
+  const [activeTab, setActiveTab] = useState<'ia'|'vendors'|'bom'|'propostas'|'escopo'>('ia');
+  const [escopos, setEscopos] = useState<any[]>([]);
+  const [escopoTitulo, setEscopoTitulo] = useState('');
+  const [escopoDescricao, setEscopoDescricao] = useState('');
+  const [escopoLoading, setEscopoLoading] = useState(false);
+  const [escopoError, setEscopoError] = useState('');
+  const [editingEscopoId, setEditingEscopoId] = useState<number | null>(null);
+  const [bomItems, setBomItems] = useState<any[]>([]);
+  const [generatingBom, setGeneratingBom] = useState(false);
+  const [bomError, setBomError] = useState('');
+  const [rfp, setRfp] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<string | null>('');
+  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<any[]>([]);
+  const [filesError, setFilesError] = useState('');
+  const [vendorAnalysisSaved, setVendorAnalysisSaved] = useState(false);
+  const [selectedVendor, setSelectedVendor] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const [analyzing, setAnalyzing] = useState<boolean>(false);
+  const [proposals, setProposals] = useState<any[]>([]);
+  const [proposalsError, setProposalsError] = useState('');
+  const [techSections, setTechSections] = useState<Record<string,string> | null>(null);
+  const [editingProposalId, setEditingProposalId] = useState<number | null>(null);
+  const [techLoading, setTechLoading] = useState(false);
+  const [techError, setTechError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const fetchBom = async () => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/bom/rfp/${id}`);
+      setBomItems(res.data);
+    } catch (err: any) {
+      setBomError('Erro ao carregar BoM');
+    }
+  };
+
+  const handleGenerateBom = async () => {
+    if (!id) return;
+    setGeneratingBom(true);
+    setBomError('');
+    try {
+      await api.post(`/bom/rfp/${id}/generate`);
+      await fetchBom();
+    } catch (err: any) {
+      setBomError(err?.response?.data?.detail || 'Erro ao gerar BoM via IA');
+    } finally {
+      setGeneratingBom(false);
+    }
+  };
+
+  const fetchRfp = async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const res = await api.get(`/rfps/${id}`);
+      setRfp(res.data);
+      if (res.data.resumo_ia) {
+        setAnalysisResult(res.data.resumo_ia);
+      }
+    } catch (err) {
+      setRfp(null);
+    }
+    setLoading(false);
+  };
+
+  const fetchProposals = async () => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/propostas/rfp/${id}`);
+      setProposals(res.data);
+      if (res.data.length > 0) {
+        setEditingProposalId(res.data[0].id);
+        setTechSections(res.data[0].dados_json || null);
+      } else {
+        setEditingProposalId(null);
+        setTechSections(null);
+      }
+    } catch {
+      setProposalsError('Erro ao carregar propostas');
+    }
+  };
+
+  const fetchFiles = async () => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/rfps/${id}/files`);
+      setFiles(res.data);
+    } catch (err: any) {
+      setFilesError('Erro ao carregar arquivos');
+    }
+  };
+
+  useEffect(() => {
+    fetchRfp();
+    fetchProposals();
+    fetchBom();
+    fetchEscopos();
+    fetchFiles();
+    // eslint-disable-next-line
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === 'escopo') fetchEscopos();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'ia' || activeTab === 'vendors') {
+      fetchRfp();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'bom') {
+      fetchRfp();
+      fetchBom();
+    }
+  }, [activeTab]);
+
+  const fetchEscopos = async () => {
+    if (!id) return;
+    setEscopoLoading(true);
+    setEscopoError('');
+    try {
+      const res = await api.get(`/escopos/rfp/${id}`);
+      setEscopos(res.data);
+    } catch (err: any) {
+      setEscopoError('Erro ao carregar escopos');
+    } finally {
+      setEscopoLoading(false);
+    }
+  };
+
+  const handleSaveEscopo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!escopoTitulo) return;
+    setEscopoLoading(true);
+    setEscopoError('');
+    try {
+      if (editingEscopoId) {
+        await api.put(`/escopos/${editingEscopoId}`, { titulo: escopoTitulo, descricao: escopoDescricao });
+      } else {
+        await api.post(`/escopos/rfp/${id}`, { titulo: escopoTitulo, descricao: escopoDescricao });
+      }
+      setEscopoTitulo('');
+      setEscopoDescricao('');
+      setEditingEscopoId(null);
+      fetchEscopos();
+    } catch (err: any) {
+      setEscopoError(editingEscopoId ? 'Erro ao editar escopo' : 'Erro ao adicionar escopo');
+    } finally {
+      setEscopoLoading(false);
+    }
+  };
+
+  const handleDeleteEscopo = async (escopoId: number) => {
+    if (!window.confirm('Confirmar exclusão do escopo?')) return;
+    setEscopoLoading(true);
+    try {
+      await api.delete(`/escopos/${escopoId}`);
+      fetchEscopos();
+    } catch {
+      setEscopoError('Erro ao excluir escopo');
+    } finally {
+      setEscopoLoading(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    if (!id || id === 'undefined') {
+      setUploadError('ID da RFP não encontrado. Não é possível enviar o arquivo.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', e.target.files[0]);
+    try {
+      await api.post(`/rfps/${id}/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      fetchRfp(); // Atualiza detalhes após upload
+      fetchFiles();
+    } catch (err: any) {
+      setUploadError(err?.response?.data?.detail || 'Erro ao fazer upload.');
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!id) return;
+    setAnalyzing(true);
+    try {
+      const res = await api.post(`/rfps/${id}/analyze`);
+      setAnalysisResult(res.data.resumo);
+      await fetchRfp();
+    } catch (err: any) {
+      console.error('Erro ao analisar RFP', err);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // Save vendor analysis and chosen vendor to backend
+  const saveVendorAnalysis = async (analysis: string) => {
+    if (!id) return;
+    try {
+      await api.post(`/rfps/${id}/save-vendor-analysis`, { analise: analysis });
+      if (selectedVendor !== null) {
+        await api.post(`/rfps/${id}/set-fabricante-escolhido`, { fabricante_escolhido_id: selectedVendor });
+      }
+      fetchRfp();
+    } catch (err) {
+      console.error('Erro ao salvar análise de vendors', err);
+    }
+  };
+
+  const handleSelectVendorAPI = async (vendorId: number) => {
+    setSelectedVendor(vendorId);
+    if (!id) return;
+    try {
+      await api.post(`/rfps/${id}/set-fabricante-escolhido`, { fabricante_escolhido_id: vendorId });
+      fetchRfp();
+    } catch (err) {
+      console.error('Erro ao definir fabricante escolhido', err);
+    }
+  };
+
+  // Generate technical proposal via IA
+  const handleGenerateProposal = async () => {
+    if (!id) return;
+    setTechLoading(true);
+    setTechError('');
+    try {
+      const res = await api.post(`/propostas_tecnicas/rfp/${id}/gerar`);
+      setTechSections(res.data);
+      await fetchProposals();
+    } catch {
+      setTechError('Erro ao gerar proposta via IA');
+    } finally {
+      setTechLoading(false);
+    }
+  };
+
+  // Save edited proposal
+  const handleSaveProposal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProposalId || !techSections) return;
+    setTechLoading(true);
+    setTechError('');
+    try {
+      await api.put(`/propostas/item/${editingProposalId}`, { dados_json: techSections });
+      await fetchProposals();
+    } catch {
+      setTechError('Erro ao salvar proposta');
+    } finally {
+      setTechLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-8">
+      <button className="mb-4 text-primary hover:underline">Voltar</button>
+      <h2 className="text-xl font-bold mb-2">Detalhes da RFP</h2>
+      {/* Exibe dados reais da RFP */}
+      {loading ? (
+        <div>Carregando...</div>
+      ) : rfp ? (
+        <>
+          <div className="mb-4">
+            <div className="font-medium">Nome:</div>
+            <div>{rfp.nome}</div>
+          </div>
+          <div className="mb-4">
+            <div className="font-medium">Status:</div>
+            <div>{rfp.status}</div>
+          </div>
+          <div className="mb-4">
+            <div className="font-medium">Arquivo:</div>
+            {rfp.arquivo_url ? (
+              <a
+                href={api.getUri({ url: `/uploaded_rfps/${rfp.arquivo_url.split(/[\\/]/).pop()}` })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+                download
+              >
+                {rfp.arquivo_url.split('_').slice(2).join('_')}
+              </a>
+            ) : (
+              <span className="text-gray-500">Nenhum arquivo enviado</span>
+            )}
+          </div>
+          {/* Lista de uploads múltiplos */}
+          <div className="mb-4">
+            <div className="font-medium">Arquivos Adicionais:</div>
+            {files.length > 0 ? (
+              files.map(f => (
+                <a
+                  key={f.id}
+                  href={api.getUri({ url: `/rfps/${id}/download/${f.id}` })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-blue-600 underline"
+                >
+                  {f.filename}
+                </a>
+              ))
+            ) : (
+              <span className="text-gray-500">Nenhum arquivo adicional</span>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="text-red-500">RFP não encontrada.</div>
+      )}
+      {/* Tabs */}
+      <div className="flex space-x-4 border-b mb-4">
+        {['ia','vendors','bom','escopo','propostas'].map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab as any)}
+            className={`px-4 py-2 ${activeTab===tab?'border-b-2 font-semibold text-primary':''}`}
+          >
+            {tab==='ia'? 'Análise IA' : tab==='vendors'? 'Análise Vendors' : tab==='bom'? 'BoM' : tab==='propostas' ? 'Propostas' : 'Escopo de Serviços'}
+          </button>
+        ))}
+      </div>
+      {/* Tab panels */}
+      {activeTab==='ia' && (
+        <>
+          {/* Upload/Analyze section */}
+          <div className="flex gap-4 mb-6 items-center">
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.xlsx,.xls"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <button
+              className="bg-accent text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60"
+              onClick={handleUploadClick}
+            >
+              Upload Arquivo
+            </button>
+            {uploadError && <span className="text-red-500 text-sm ml-2">{uploadError}</span>}
+            <button onClick={handleAnalyze} disabled={analyzing} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60">
+              {analyzing ? 'Analisando...' : 'Analisar com IA'}
+            </button>
+          </div>
+          {/* IA result */}
+          {analysisResult && (
+            <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-bold mb-2">Resumo da IA</h3>
+              <div className="prose prose-sm max-w-full break-words whitespace-pre-wrap overflow-x-auto">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{analysisResult}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      {activeTab==='vendors' && (
+        <VendorMatchAnalysis
+          rfpId={Number(id)}
+          savedAnalysis={rfp?.analise_vendors}
+          selectedVendorId={selectedVendor ?? undefined}
+          onSelectVendor={handleSelectVendorAPI}
+          onSave={saveVendorAnalysis}
+        />
+      )}
+      {activeTab==='bom' && (
+        <div className="mt-6">
+          {/* Existing BoM section */}
+          <h3 className="font-bold mb-2">Itens BoM</h3>
+          <button
+            className="bg-primary text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60 mb-4"
+            onClick={handleGenerateBom}
+            disabled={generatingBom}
+          >
+            {generatingBom ? 'Gerando BoM via IA...' : 'Gerar BoM via IA'}
+          </button>
+          {bomError && <span className="text-red-500 text-sm ml-2">{bomError}</span>}
+          <div className="overflow-x-auto mt-2">
+            {bomItems.length === 0 ? (
+              <div className="text-gray-500">Nenhum item de BoM encontrado.</div>
+            ) : (
+              <table className="min-w-full border text-sm">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border px-2 py-1">Descrição</th>
+                    <th className="border px-2 py-1">Modelo</th>
+                    <th className="border px-2 py-1">Part Number</th>
+                    <th className="border px-2 py-1">Quantidade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bomItems.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="border px-2 py-1">{item.descricao}</td>
+                      <td className="border px-2 py-1">{item.modelo}</td>
+                      <td className="border px-2 py-1">{item.part_number}</td>
+                      <td className="border px-2 py-1">{item.quantidade}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+      {activeTab==='propostas' && (
+        <>
+          <div className="mt-6">
+            <h3 className="font-bold mb-2">Propostas</h3>
+            {proposalsError && <span className="text-red-500">{proposalsError}</span>}
+            {/* Gerar Proposta via IA */}
+            <button
+              className="bg-primary text-white px-4 py-2 rounded-lg font-semibold mb-4"
+              type="button"
+              disabled={techLoading}
+              onClick={handleGenerateProposal}
+            >
+              {techLoading ? 'Gerando proposta via IA...' : 'Gerar Proposta via IA'}
+            </button>
+            {!techSections ? (
+              <div className="text-gray-500">Nenhuma proposta disponível.</div>
+            ) : (
+              <form onSubmit={handleSaveProposal} className="mt-4 space-y-4">
+                {techSections && Object.entries(techSections).map(([key,value]) => (
+                  <div key={key}>
+                    <label className="font-semibold">{key}</label>
+                    <textarea
+                      className="border w-full p-2 rounded mt-1"
+                      rows={4}
+                      value={value}
+                      onChange={e => setTechSections(s => s ? { ...s, [key]: e.target.value } : s)}
+                    />
+                  </div>
+                ))}
+                <div className="flex gap-2 mt-2">
+                  <button type="submit" className="bg-primary text-white px-4 py-2 rounded" disabled={techLoading}>
+                    {techLoading ? 'Salvando...' : 'Salvar Proposta'}
+                  </button>
+                  <button
+                    type="button"
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded"
+                    onClick={async () => {
+                      setTechLoading(true);
+                      try {
+                        const resp = await api.get(`/propostas_tecnicas/rfp/${id}/download`, { responseType: 'blob' });
+                        const url = window.URL.createObjectURL(new Blob([resp.data]));
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.setAttribute('download', `proposta_tecnica_rfp_${id}.docx`);
+                        document.body.appendChild(link);
+                        link.click();
+                        link.parentNode?.removeChild(link);
+                      } catch {
+                        setTechError('Erro ao baixar proposta DOCX');
+                      } finally {
+                        setTechLoading(false);
+                      }
+                    }}
+                  >
+                    Download Proposta (DOCX)
+                  </button>
+                </div>
+                {techError && <span className="text-red-500 text-sm">{techError}</span>}
+              </form>
+            )}
+          </div>
+        </>
+      )}
+      {activeTab==='escopo' && (
+        <div className="mt-6">
+          <h3 className="font-bold mb-2">Escopo de Serviços</h3>
+          <button
+            className="bg-accent text-white px-4 py-2 rounded font-semibold mb-2 w-fit"
+            type="button"
+            disabled={escopoLoading}
+            onClick={async () => {
+              setEscopoLoading(true);
+              setEscopoError('');
+              try {
+                const res = await api.post(`/escopos/rfp/${id}/sugerir`);
+                setEscopoTitulo(res.data.titulo);
+                setEscopoDescricao(res.data.descricao);
+              } catch (err: any) {
+                setEscopoError('Erro ao sugerir escopo via IA');
+              } finally {
+                setEscopoLoading(false);
+              }
+            }}
+          >
+            Sugerir Escopo via IA
+          </button>
+          <form className="flex flex-col gap-2 mb-4" onSubmit={handleSaveEscopo}>
+            <input
+              type="text"
+              className="border px-3 py-2 rounded"
+              placeholder="Título do escopo"
+              value={escopoTitulo}
+              onChange={e => setEscopoTitulo(e.target.value)}
+              required
+            />
+            <textarea
+              className="border px-3 py-2 rounded"
+              placeholder="Descrição do escopo (opcional)"
+              value={escopoDescricao}
+              onChange={e => setEscopoDescricao(e.target.value)}
+              rows={5}
+            />
+            <div className="flex gap-2">
+              <button type="submit" className="bg-primary text-white px-4 py-2 rounded font-semibold" disabled={escopoLoading}>
+                {editingEscopoId ? 'Salvar Alterações' : 'Adicionar Escopo'}
+              </button>
+              {editingEscopoId && (
+                <button type="button" className="bg-gray-300 px-4 py-2 rounded" onClick={() => { setEditingEscopoId(null); setEscopoTitulo(''); setEscopoDescricao(''); }}>
+                  Cancelar
+                </button>
+              )}
+            </div>
+            {escopoError && <span className="text-red-500 text-sm">{escopoError}</span>}
+          </form>
+          <div className="overflow-x-auto mt-2">
+            {escopoLoading ? (
+              <div>Carregando...</div>
+            ) : escopos.length === 0 ? (
+              <div className="text-gray-500">Nenhum escopo cadastrado.</div>
+            ) : (
+              <table className="min-w-full border text-sm">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="px-2 py-1 border">Título</th>
+                    <th className="px-2 py-1 border">Descrição</th>
+                    <th className="px-2 py-1 border">Criado em</th>
+                    <th className="px-2 py-1 border">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {escopos.map((e: any) => (
+                    <tr key={e.id}>
+                      <td className="border px-2 py-1 font-semibold">{e.titulo}</td>
+                      <td className="border px-2 py-1 whitespace-pre-line">{e.descricao}</td>
+                      <td className="border px-2 py-1">{new Date(e.created_at).toLocaleString('pt-BR')}</td>
+                      <td className="border px-2 py-1">
+                        <div className="flex gap-2 justify-center">
+                          <button
+                            className="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-1 rounded"
+                            onClick={() => { setEditingEscopoId(e.id); setEscopoTitulo(e.titulo); setEscopoDescricao(e.descricao || ''); }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                            onClick={() => handleDeleteEscopo(e.id)}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default RFPDetailPage;
+
+
+# END FILE CONTENTS
+
+
+# File: main.tsx
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>
+);
+
+
+# END FILE CONTENTS
+
+
+# File: components/layout/DashboardLayout.tsx
+
+import React from 'react';
+import { Outlet, NavLink } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+
+const DashboardLayout = () => {
+  const { nome, perfil, logout } = useAuth();
+  const menu = [
+    { label: 'RFPs', to: '/' },
+    ...(perfil === 'admin' ? [
+      { label: 'Fornecedores', to: '/fornecedores' },
+      { label: 'Usuários', to: '/usuarios' },
+      { label: 'Config IA', to: '/admin/config/providers' },
+    ] : []),
+  ];
+  return (
+    <div className="min-h-screen flex bg-gradient-to-br from-background via-white to-primary/10">
+      <aside className="w-64 min-h-screen hidden md:flex flex-col bg-white/80 backdrop-blur-xl shadow-xl border-r border-slate-200 relative z-10">
+        <div className="h-16 flex items-center justify-center font-bold text-2xl tracking-tight text-primary border-b border-slate-100 drop-shadow-sm select-none">
+          <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">RFP System</span>
+        </div>
+        <nav className="flex-1 p-4 space-y-2">
+          {menu.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `block px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm ${isActive ? 'bg-gradient-to-r from-primary to-accent text-white shadow-lg scale-105' : 'text-gray-700 hover:bg-primary/10 hover:scale-105'}`
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+      <main className="flex-1 min-h-screen flex flex-col">
+        <header className="h-16 bg-white/80 border-b flex items-center justify-end px-4 md:px-8 gap-4 shadow-lg backdrop-blur-xl sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline text-gray-700 font-medium">
+              Olá,
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-lg shadow-md">
+                {nome?.[0]?.toUpperCase() || 'U'}
+              </span>
+              <button
+                onClick={() => window.location.href = '/perfil'}
+                className="text-primary font-semibold max-w-[120px] truncate underline hover:text-accent transition"
+                title="Editar perfil"
+              >
+                {nome}
+              </button>
+              <span className="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full ml-1">{perfil}</span>
+            </span>
+            <button onClick={logout} className="ml-4 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-accent text-white font-semibold shadow hover:brightness-110 active:scale-95 transition-all border-0">
+              Logout
+            </button>
+          </div>
+        </header>
+        <section className="flex-1 p-4 md:p-8 bg-transparent">
+          <Outlet />
+        </section>
+      </main>
+    </div>
+  );
+};
+
+export default DashboardLayout;
+
+
+# END FILE CONTENTS
+
+
+# File: api/axios.ts
+
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'https://rfpbackend.gustavotadeu.com.br',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  withCredentials: true,
+  maxRedirects: 0,
+  proxy: false
+});
+
+// Interceptor para adicionar JWT automaticamente
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default api;
+
+# END FILE CONTENTS
+
+
+# File: features/rfps/RFPListPage.tsx
+
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../../api/axios';
+import RFPCreateModal from './RFPCreateModal';
+import { useAuth } from '../../hooks/useAuth';
+
+interface RFP {
+  id: number;
+  nome: string;
+  status: string;
+  arquivo_url?: string;
+  fabricante_escolhido_id?: number;
+  fabricante_escolhido_nome?: string;
+}
+
+const RFPListPage = () => {
+  const [rfps, setRfps] = useState<RFP[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const navigate = useNavigate();
+
+  const fetchRFPs = async () => {
+    setLoading(true);
+    try {
+      const [rfpsRes, vendorsRes] = await Promise.all([api.get('/rfps'), api.get('/vendors')]);
+      const vendorMap = new Map(vendorsRes.data.map((v: any) => [v.id, v.nome]));
+      const enriched = rfpsRes.data.map((rfp: RFP) => ({
+        ...rfp,
+        fabricante_escolhido_nome: rfp.fabricante_escolhido_id ? vendorMap.get(rfp.fabricante_escolhido_id) || '' : ''
+      }));
+      setRfps(enriched);
+    } catch {
+      setError('Erro ao carregar RFPs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownload = async (rfpId: number, filename: string) => {
+    try {
+      const response = await api.get(`/rfps/${rfpId}/download`, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: response.headers['content-type'] });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Erro ao baixar arquivo', err);
+    }
+  };
+
+  const handleDelete = async (rfpId: number) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta RFP?')) return;
+    try {
+      await api.delete(`/rfps/${rfpId}`);
+      fetchRFPs();
+    } catch {
+      setError('Erro ao excluir RFP');
+    }
+  };
+
+  useEffect(() => {
+    fetchRFPs();
+  }, []);
+
+  return (
+    <div>
+      <RFPCreateModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={fetchRFPs} />
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-2">
+        <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent drop-shadow">RFPs</h2>
+        <button onClick={() => setModalOpen(true)} className="bg-gradient-to-r from-primary to-accent text-white px-6 py-2 rounded-xl font-bold shadow hover:scale-105 active:scale-95 transition-all text-lg">
+          + Nova RFP
+        </button>
+      </div>
+      <div className="bg-white/90 rounded-2xl shadow-xl p-4 md:p-8">
+        <div className="mb-6 flex flex-col sm:flex-row gap-2 items-center">
+          <input type="text" placeholder="Buscar..." className="border px-4 py-2 rounded-lg w-full sm:w-64 focus:ring-2 focus:ring-primary" />
+          <button className="bg-accent text-white px-5 py-2 rounded-lg font-semibold shadow hover:scale-105 transition">Filtrar</button>
+        </div>
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="text-red-500 text-center py-8">{error}</div>
+        ) : rfps.length === 0 ? (
+          <div className="text-gray-400 text-center py-8">Nenhuma RFP encontrada.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full table-auto text-base">
+              <thead>
+                <tr className="bg-gradient-to-r from-primary/10 to-accent/10">
+                  <th className="px-6 py-3 text-left font-bold text-primary">Nome</th>
+                  <th className="px-6 py-3 text-left font-bold text-primary">Status</th>
+                  <th className="px-6 py-3 text-left font-bold text-primary">Arquivo</th>
+                  <th className="px-6 py-3 text-left font-bold text-primary">Fabricante</th>
+                  <th className="px-6 py-3 text-left font-bold text-primary">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rfps.map(rfp => (
+                  <tr key={rfp.id} className="border-b border-slate-100 hover:bg-primary/5 transition">
+                    <td className="px-6 py-3 font-medium">{rfp.nome}</td>
+                    <td className="px-6 py-3">
+                      <span className="px-3 py-1 rounded-full bg-primary/10 text-primary font-semibold text-sm">
+                        {rfp.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3">
+                      {rfp.arquivo_url ? (
+                        <button
+                          onClick={() => handleDownload(rfp.id, rfp.arquivo_url?.split(/[\/]/).pop() || '')}
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-primary/10 text-primary font-semibold hover:bg-primary/20 transition group"
+                          title="Baixar arquivo"
+                        >
+                          <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" /></svg>
+                          <span className="hidden md:inline">Arquivo</span>
+                        </button>
+                      ) : (
+                        <span className="text-gray-300 italic">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3">
+                      {rfp.fabricante_escolhido_nome || ''}
+                    </td>
+                    <td className="px-6 py-3 flex gap-2">
+                      <button onClick={() => navigate(`/rfps/${rfp.id}`)} className="bg-primary text-white px-4 py-1 rounded-lg font-semibold shadow hover:bg-primary/80 transition">Ver</button>
+                      <button onClick={() => handleDelete(rfp.id)} className="bg-red-500 text-white px-4 py-1 rounded-lg font-semibold shadow hover:bg-red-600 transition">Excluir</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {/* Paginação aqui (futuro) */}
+      </div>
+    </div>
+  );
+};
+
+export default RFPListPage;
+
+
+# END FILE CONTENTS
+
+
+# File: features/users/UsersAdminPage.tsx
+
+import React, { useEffect, useState } from 'react';
+import api from '../../api/axios';
+import { useAuth } from '../../hooks/useAuth';
+
+interface User {
+  id: number;
+  nome: string;
+  email: string;
+  perfil: string;
+  ativo: boolean;
+}
+
+const UsersAdminPage: React.FC = () => {
+  const { perfil } = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ nome: '', email: '', senha: '', perfil: 'editor' });
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (perfil === 'admin') fetchUsers();
+  }, [perfil]);
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get('/users/');
+      setUsers(res.data);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Erro ao carregar usuários');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (perfil !== 'admin') {
+    return <div className="p-8 text-red-500">Acesso negado</div>;
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    try {
+      await api.post('/users/', form);
+      setSuccess('Usuário criado com sucesso!');
+      setForm({ nome: '', email: '', senha: '', perfil: 'editor' });
+      fetchUsers();
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      let msg = 'Erro ao criar usuário';
+      if (Array.isArray(detail)) {
+        msg = detail.map((d: any) => d.msg).join('; ');
+      } else if (typeof detail === 'string') {
+        msg = detail;
+      }
+      setError(msg);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Tem certeza que deseja excluir este usuário?')) return;
+    setError('');
+    setSuccess('');
+    try {
+      await api.delete(`/users/${id}/`);
+      setSuccess('Usuário excluído com sucesso!');
+      fetchUsers();
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      let msg = 'Erro ao excluir usuário';
+      if (Array.isArray(detail)) {
+        msg = detail.map((d: any) => d.msg).join('; ');
+      } else if (typeof detail === 'string') {
+        msg = detail;
+      }
+      setError(msg);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto bg-white p-8 rounded shadow">
+      <h2 className="text-2xl font-bold mb-4">Gerenciar Usuários</h2>
+      <form onSubmit={handleCreateUser} className="flex flex-wrap gap-4 mb-6 items-end">
+        <div>
+          <label className="block mb-1">Nome</label>
+          <input name="nome" value={form.nome} onChange={handleFormChange} className="border px-3 py-2 rounded" required />
+        </div>
+        <div>
+          <label className="block mb-1">Email</label>
+          <input name="email" type="email" value={form.email} onChange={handleFormChange} className="border px-3 py-2 rounded" required />
+        </div>
+        <div>
+          <label className="block mb-1">Senha</label>
+          <input name="senha" type="password" value={form.senha} onChange={handleFormChange} className="border px-3 py-2 rounded" required />
+        </div>
+        <div>
+          <label className="block mb-1">Perfil</label>
+          <select name="perfil" value={form.perfil} onChange={handleFormChange} className="border px-3 py-2 rounded">
+            <option value="editor">Editor</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <button type="submit" className="bg-primary text-white px-4 py-2 rounded">Criar</button>
+      </form>
+      {success && <div className="text-green-600 mb-2">{success}</div>}
+      {error && <div className="text-red-500 mb-2">{error}</div>}
+      {loading ? (
+        <div>Carregando...</div>
+      ) : (
+        <table className="min-w-full table-auto">
+          <thead>
+            <tr className="bg-primary/10">
+              <th className="px-4 py-2 text-left">ID</th>
+              <th className="px-4 py-2 text-left">Nome</th>
+              <th className="px-4 py-2 text-left">Email</th>
+              <th className="px-4 py-2 text-left">Perfil</th>
+              <th className="px-4 py-2 text-left">Ativo</th>
+              <th className="px-4 py-2 text-left">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} className="border-b hover:bg-primary/5">
+                <td className="px-4 py-2">{u.id}</td>
+                <td className="px-4 py-2">{u.nome}</td>
+                <td className="px-4 py-2">{u.email}</td>
+                <td className="px-4 py-2">{u.perfil}</td>
+                <td className="px-4 py-2">{u.ativo ? 'Sim' : 'Não'}</td>
+                <td className="px-4 py-2">
+                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => handleDelete(u.id)}>Excluir</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
+export default UsersAdminPage;
+
+
+# END FILE CONTENTS
+
+
+# File: features/vendors/VendorsListPage.tsx
+
+import React, { useState, useEffect } from 'react';
+import api from '../../api/axios';
+import { useAuth } from '../../hooks/useAuth';
+
+interface Vendor {
+  id: number;
+  nome: string;
+  tecnologias?: string;
+  produtos?: string;
+  certificacoes?: string;
+  requisitos_atendidos?: string;
+}
+
+const VendorsListPage: React.FC = () => {
+  const { perfil } = useAuth();
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [nome, setNome] = useState('');
+  const [tecnologias, setTecnologias] = useState('');
+  const [produtos, setProdutos] = useState('');
+  const [certificacoes, setCertificacoes] = useState('');
+  const [requisitosAtendidos, setRequisitosAtendidos] = useState('');
+
+  useEffect(() => {
+    if (perfil !== 'admin') return;
+    fetchVendors();
+  }, [perfil]);
+
+  const fetchVendors = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/vendors');
+      setVendors(res.data);
+    } catch {
+      setError('Erro ao carregar fornecedores');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openAddModal = () => {
+    setEditingVendor(null);
+    setNome('');
+    setTecnologias('');
+    setProdutos('');
+    setCertificacoes('');
+    setRequisitosAtendidos('');
+    setModalOpen(true);
+  };
+
+  const openEditModal = (vendor: Vendor) => {
+    setEditingVendor(vendor);
+    setNome(vendor.nome || '');
+    setTecnologias(vendor.tecnologias || '');
+    setProdutos(vendor.produtos || '');
+    setCertificacoes(vendor.certificacoes || '');
+    setRequisitosAtendidos(vendor.requisitos_atendidos || '');
+    setModalOpen(true);
+  };
+
+  const deleteVendor = async (id: number) => {
+    if (!window.confirm('Deseja excluir este fornecedor?')) return;
+    try {
+      await api.delete(`/vendors/${id}`);
+      fetchVendors();
+    } catch {
+      setError('Erro ao excluir fornecedor');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      nome,
+      tecnologias,
+      produtos,
+      certificacoes,
+      requisitos_atendidos: requisitosAtendidos,
+    };
+    try {
+      if (editingVendor) {
+        await api.put(`/vendors/${editingVendor.id}`, payload);
+      } else {
+        await api.post('/vendors', payload);
+      }
+      setModalOpen(false);
+      fetchVendors();
+    } catch (err: any) {
+      console.error('Salvar fornecedor erro:', err);
+      setError(err.response?.data?.detail || err.response?.data || err.message || 'Erro ao salvar fornecedor');
+    }
+  };
+
+  if (perfil !== 'admin') {
+    return <div className="p-8 text-red-500">Acesso negado</div>;
+  }
+
+  return (
+    <div className="p-8 bg-white rounded-lg shadow">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Gerenciar Fornecedores</h2>
+        <button className="bg-primary text-white px-4 py-2 rounded" onClick={openAddModal}>Adicionar</button>
+      </div>
+      {error && <div className="text-red-500 mb-2">{error}</div>}
+      {loading ? (
+        <div>Carregando...</div>
+      ) : (
+        <table className="min-w-full table-auto">
+          <thead>
+            <tr className="bg-primary/10">
+              <th className="px-4 py-2 text-left">ID</th>
+              <th className="px-4 py-2 text-left">Nome</th>
+              <th className="px-4 py-2">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vendors.map(v => (
+              <tr key={v.id} className="border-b hover:bg-primary/5">
+                <td className="px-4 py-2">{v.id}</td>
+                <td className="px-4 py-2">{v.nome}</td>
+                <td className="px-4 py-2 flex gap-2 justify-center">
+                  <button className="bg-yellow-400 px-2 py-1 rounded" onClick={() => openEditModal(v)}>Editar</button>
+                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => deleteVendor(v.id)}>Excluir</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg w-full max-w-md">
+            <h3 className="text-xl font-semibold mb-4">{editingVendor ? 'Editar' : 'Adicionar'} Fornecedor</h3>
+            <form onSubmit={handleSubmit}>
+              <input
+                type="text"
+                value={nome}
+                onChange={e => setNome(e.target.value)}
+                placeholder="Nome do fornecedor"
+                className="w-full border px-3 py-2 rounded mb-2"
+              />
+              <input
+                type="text"
+                value={tecnologias}
+                onChange={e => setTecnologias(e.target.value)}
+                placeholder="Tecnologias"
+                className="w-full border px-3 py-2 rounded mb-2"
+              />
+              <input
+                type="text"
+                value={produtos}
+                onChange={e => setProdutos(e.target.value)}
+                placeholder="Produtos"
+                className="w-full border px-3 py-2 rounded mb-2"
+              />
+              <input
+                type="text"
+                value={certificacoes}
+                onChange={e => setCertificacoes(e.target.value)}
+                placeholder="Certificações"
+                className="w-full border px-3 py-2 rounded mb-2"
+              />
+              <input
+                type="text"
+                value={requisitosAtendidos}
+                onChange={e => setRequisitosAtendidos(e.target.value)}
+                placeholder="Requisitos atendidos"
+                className="w-full border px-3 py-2 rounded mb-4"
+              />
+              <div className="flex justify-end gap-2">
+                <button type="button" className="px-4 py-2" onClick={() => setModalOpen(false)}>Cancelar</button>
+                <button type="submit" className="bg-primary text-white px-4 py-2 rounded">{editingVendor ? 'Salvar' : 'Adicionar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default VendorsListPage;
+
+
+# END FILE CONTENTS

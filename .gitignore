@@ -1,0 +1,6 @@
+node_modules/
+.venv/
+backend.zip
+frontend.zip
+bkp_upload/
+frontend/node_modules/
