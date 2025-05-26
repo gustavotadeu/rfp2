@@ -4,3 +4,13 @@ backend.zip
 frontend.zip
 bkp_upload/
 frontend/node_modules/
+#env
+.env
+backend/.env
+
+
+# GPTree
+.gptree_config
+gptree_output.txt
+backend/gptree_output.txt
+frontend/src/gptree_output.txt
