@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth_router, users_router, rfps_router, vendors_router, bom_router, propostas_router, escopo_servico_router, proposta_tecnica_router, ai_config_router, ai_providers_router
+from routers import auth_router, users_router, rfps_router, vendors_router, bom_router, propostas_router, escopo_servico_router, proposta_tecnica_router, ai_config_router, ai_providers_router, ai_prompts_router # Added ai_prompts_router
 
 from fastapi.staticfiles import StaticFiles
 import logging
@@ -53,6 +53,7 @@ app.include_router(escopo_servico_router.router)
 app.include_router(proposta_tecnica_router.router)
 app.include_router(ai_config_router.router)
 app.include_router(ai_providers_router.router)
+app.include_router(ai_prompts_router.router) # Included ai_prompts_router
 
 @app.get("/")
 async def root():

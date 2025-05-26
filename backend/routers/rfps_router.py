@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 from auth import get_db, get_current_user
-from models import RFP, User, Vendor, AIProvider, RFPFile
+from models import RFP, User, Vendor, AIProvider, RFPFile, AIPrompt # Added AIPrompt
 from routers.ai_providers_router import get_selected_provider
 from openai import OpenAI
 import os
@@ -18,6 +18,13 @@ from PyPDF2 import PdfReader
 
 # Initialize router for RFP endpoints
 router = APIRouter(prefix="/rfps", tags=["RFPs"])
+
+# Helper function to get prompt text by name
+def get_prompt_text_by_name(db: Session, name: str) -> str:
+    prompt_obj = db.query(AIPrompt).filter(AIPrompt.name == name).first()
+    if not prompt_obj:
+        raise HTTPException(status_code=500, detail=f"Prompt '{name}' not found in database.")
+    return prompt_obj.prompt_text
 
 # --- Request and Response Models ---
 class RFPCreate(BaseModel):
@@ -107,16 +114,11 @@ def match_vendors_to_rfp(rfp_id: int, db: Session = Depends(get_db), provider: A
         f"Vendor: {v.nome}\nTecnologias: {v.tecnologias}\nProdutos: {v.produtos}\nCertificacoes: {v.certificacoes}\nRequisitos_Atendidos: {v.requisitos_atendidos}"
         for v in vendors
     ])
-    prompt = (
-        "Você é um consultor técnico especializado em pré-vendas. Receberá abaixo o resumo de uma RFP e uma lista de vendors/fabricantes com suas características.\n"
-        "Avalie, para cada vendor, o nível de aderência aos requisitos da RFP.\n"
-        "Para cada vendor, atribua uma pontuação de 0 a 10 e explique resumidamente o motivo da nota, indicando requisitos atendidos e não atendidos.\n"
-        "Responda em JSON, com o seguinte formato:\n"
-        "[{'vendor': <nome>, 'score': <0-10>, 'motivo': <texto explicativo>}, ...]\n"
-        "\nResumo da RFP:\n" + rfp.resumo_ia +
-        "\n\nVendors:\n" + vendors_info +
-        "\n\nResponda apenas com o JSON solicitado, sem comentários extras."
-    )
+
+    system_prompt_text = get_prompt_text_by_name(db, "vendor_matching_system_role")
+    user_prompt_template = get_prompt_text_by_name(db, "vendor_matching_user_prompt")
+    
+    user_content = user_prompt_template.format(rfp_summary=rfp.resumo_ia, vendors_info=vendors_info)
 
     # Instantiate client with selected provider
     client = OpenAI(api_key=provider.api_key)
@@ -124,8 +126,8 @@ def match_vendors_to_rfp(rfp_id: int, db: Session = Depends(get_db), provider: A
     response = client.chat.completions.create(
         model=provider.model,
         messages=[
-            {"role": "system", "content": "Você é um consultor técnico de pré-vendas."},
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": system_prompt_text},
+            {"role": "user", "content": user_content}
         ],
         max_tokens=4096,
         temperature=0.2
@@ -361,73 +363,21 @@ def analyze_rfp(rfp_id: int, db: Session = Depends(get_db), current_user: User =
         text += f"\n\nConteúdo do arquivo {file_rec.filename}:\n{content}"
     # Instanciar cliente e chamar LLM para gerar resumo a partir dos múltiplos arquivos
     client = OpenAI(api_key=provider.api_key)
+
+    system_prompt_text = get_prompt_text_by_name(db, "rfp_analysis_system_role")
+    user_prompt_template = get_prompt_text_by_name(db, "rfp_analysis_user_prompt")
+    
+    user_content = user_prompt_template.format(text=text)
+
     # Chamada à LLM configurada
     response = client.chat.completions.create(
         model=provider.model,
         messages=[
-            {"role": "system", "content": (
-                "Você é um Analista de Pré-Vendas e Comercial Sênior, especializado em analisar RFPs (Request for Proposal). "
-                "Seu objetivo é interpretar documentos de RFP enviados, extrair as informações mais importantes, identificar riscos ou lacunas, "
-                "e apresentar a análise de forma organizada, consultiva e clara em Markdown. "
-                "Use títulos e listas para estruturar o conteúdo. "
-                "Se alguma informação estiver ausente, aponte claramente como 'Informação não fornecida - recomendar esclarecimento'. "
-                "Seja técnico, profissional e objetivo."
-            )},
-            {"role": "user", "content": (
-                "Analise o seguinte conteúdo de RFP, leve em consideração as informações fornecidas em todo o conteúdo da RFP, inclusive anexos ou descrições de especificação técnica, e estruture a resposta em Markdown seguindo rigorosamente este formato, preenchendo TODOS os tópicos, mesmo que a informação não esteja presente (neste caso, escreva 'Informação não fornecida - recomendar esclarecimento').\n"
-                "\n## 1. Identificação Geral\n"
-                "- **Nome do Projeto:** <preencher>\n"
-                "- **Cliente:** <preencher>\n"
-                "- **Número da RFP (se aplicável):** <preencher>\n"
-                "- **Data de Emissão:** <preencher>\n"
-                "- **Data de Entrega da Proposta:** <preencher>\n"
-                "\n## 2. Objetivo do Projeto\n"
-                "- <preencher>\n"
-                "\n## 3. Escopo Técnico\n"
-                "- **Descrição geral do escopo:** <preencher>\n"
-                "- **Tecnologias envolvidas:** <preencher>\n"
-                "- **Quantitativos estimados:** <preencher>\n"
-                "\n## 4. Equipamentos e Serviços Detalhados\n"
-                "Liste os equipamentos e serviços solicitados, preenchendo as tabelas abaixo:\n"
-                "\n### Equipamentos\n"
-                "| Equipamento | Modelo/Descrição | Quantidade | Observações |\n"
-                "|:------------|:------------------|:-----------|:------------|\n"
-                "| <preencher> | <preencher>       | <preencher>| <preencher> |\n"
-                "\n### Serviços\n"
-                "| Serviço | Descrição resumida | Observações |\n"
-                "|:--------|:-------------------|:------------|\n"
-                "| <preencher> | <preencher> | <preencher> |\n"
-                "\n**Nota:** Se algum dado como modelo, quantidade ou descrição técnica não estiver presente, indicar 'Informação não fornecida - recomendar esclarecimento'.\n"
-                "\n## 5. Requisitos Obrigatórios\n"
-                "- <preencher>\n"
-                "\n## 6. Requisitos Desejáveis\n"
-                "- <preencher>\n"
-                "\n## 7. Critérios de Qualificação\n"
-                "- <preencher>\n"
-                "\n## 8. Modelo de Precificação\n"
-                "- **Forma de precificação exigida:** <preencher>\n"
-                "- **Tipo de contrato:** <preencher>\n"
-                "\n## 9. Entregáveis Esperados\n"
-                "- <preencher>\n"
-                "\n## 10. Prazos e Condições\n"
-                "- **Prazos de execução:** <preencher>\n"
-                "- **Condições comerciais relevantes:** <preencher>\n"
-                "\n## 11. Riscos Identificados\n"
-                "- <preencher>\n"
-                "\n## 12. Perguntas ou Pontos a Esclarecer\n"
-                "- <preencher>\n"
-                "\n---\n"
-                "**DICAS DE FORMATAÇÃO:**\n"
-                "- Use sempre listas ou tópicos para respostas longas.\n"
-                "- Nunca deixe um item sem resposta (caso contrário, escreva 'Informação não fornecida - recomendar esclarecimento').\n"
-                "- Use negrito para títulos internos dos tópicos.\n"
-                "- Separe visualmente os tópicos com linhas em branco.\n"
-                "- Respeite o layout Markdown para garantir legibilidade, mesmo para textos extensos.\n"
-                f"\n\nConteúdo da RFP:\n{text}"
-            )}
+            {"role": "system", "content": system_prompt_text},
+            {"role": "user", "content": user_content}
         ],
-        max_tokens=10000,
-        temperature=0.3
+        max_tokens=10000, # Consider making this configurable or part of the prompt settings
+        temperature=0.3 # Consider making this configurable
     )
     resumo = response.choices[0].message.content
     # Salvar o resumo IA no banco e atualizar status

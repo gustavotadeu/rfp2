@@ -8,6 +8,8 @@ import VendorsListPage from './features/vendors/VendorsListPage';
 import ProfilePage from './features/users/ProfilePage';
 import UsersAdminPage from './features/users/UsersAdminPage';
 import ProvidersPage from './features/admin/ProvidersPage';
+import AIPromptListPage from './features/admin/prompts/AIPromptListPage'; // Added
+import AIPromptEditPage from './features/admin/prompts/AIPromptEditPage'; // Added
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute() {
@@ -29,7 +31,11 @@ function App() {
           <Route path="fornecedores" element={<VendorsListPage />} />
           <Route path="perfil" element={<ProfilePage />} />
           <Route path="usuarios" element={<UsersAdminPage />} />
+          {/* Admin Routes */}
           <Route path="admin/config/providers" element={<ProvidersPage />} />
+          <Route path="admin/prompts" element={<AIPromptListPage />} />
+          <Route path="admin/prompts/new" element={<AIPromptEditPage />} />
+          <Route path="admin/prompts/edit/:id" element={<AIPromptEditPage />} />
           {/* Outras rotas: propostas, usuários, etc */}
         </Route>
       </Route>
