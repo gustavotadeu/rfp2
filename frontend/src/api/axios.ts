@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://rfpbackend.gustavotadeu.com.br',
+  baseURL: 'https://rfpbackend.gustavotadeu.com.br',
   headers: {
     'Content-Type': 'application/json',
   },

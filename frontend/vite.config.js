@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => ({
     port: 5173,
     strictPort: true,
     hmr: {
-      host: 'rfp.gustavotadeu.com.br',
+      host: ['rfp.gustavotadeu.com.br', 'rfp2.gustavotadeu.com.br',]
     },
     proxy: {
       '/api': {
@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => ({
       port: 4173,
       strictPort: true,
       // 🚨 Esta linha é essencial para permitir o host personalizado
-      allowedHosts: ['rfp.gustavotadeu.com.br']
+      allowedHosts: ['rfp.gustavotadeu.com.br', 'rfp2.gustavotadeu.com.br',]
     }
   },
   build: {
