@@ -28,7 +28,11 @@ export default defineConfig(({ mode }) => ({
       port: 4173,
       strictPort: true,
       // 🚨 Esta linha é essencial para permitir o host personalizado
-      allowedHosts: ["rfp.gustavotadeu.com.br", "rfp2.gustavotadeu.com.br"],
+      allowedHosts: [
+        "rfp.gustavotadeu.com.br",
+        "rfp2.gustavotadeu.com.br",
+        "rfp.oci.gustavotadeu.com.br",
+      ],
     },
   },
   build: {
