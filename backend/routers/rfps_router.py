@@ -104,31 +104,55 @@ def match_vendors_to_rfp(rfp_id: int, db: Session = Depends(get_db), provider: A
 
     # Preparar contexto para IA
     vendors_info = "\n".join([
-        f"Vendor: {v.nome}\nTecnologias: {v.tecnologias}\nProdutos: {v.produtos}\nCertificacoes: {v.certificacoes}\nRequisitos_Atendidos: {v.requisitos_atendidos}"
+        f"Vendor: {v.nome}\n"#Tecnologias: {v.tecnologias}\nProdutos: {v.produtos}\nCertificacoes: {v.certificacoes}\nRequisitos_Atendidos: {v.requisitos_atendidos}"
         for v in vendors
     ])
-    prompt = (
-        "Você é um consultor técnico especializado em pré-vendas. Receberá abaixo o resumo de uma RFP e uma lista de vendors/fabricantes com suas características.\n"
-        "Avalie, para cada vendor, o nível de aderência aos requisitos da RFP.\n"
-        "Para cada vendor, atribua uma pontuação de 0 a 10 e explique resumidamente o motivo da nota, indicando requisitos atendidos e não atendidos.\n"
-        "Responda em JSON, com o seguinte formato:\n"
-        "[{'vendor': <nome>, 'score': <0-10>, 'motivo': <texto explicativo>}, ...]\n"
-        "\nResumo da RFP:\n" + rfp.resumo_ia +
-        "\n\nVendors:\n" + vendors_info +
-        "\n\nResponda apenas com o JSON solicitado, sem comentários extras."
-    )
+    prompt = prompt = (
+            "Avalie, para cada vendor, o nível de aderência aos requisitos da RFP. "
+            "Para cada vendor, atribua uma pontuação de **0 a 10**, onde:\n"
+            "- **0 (zero)**: O vendor é totalmente incompatível com a solução solicitada na RFP (ex: RFP de hardware, vendor que só oferece software ou serviços não relacionados), ou sua descrição **não apresenta nenhum produto/tecnologia relevante** que sequer comece a atender às funcionalidades gerais da RFP.\n"
+            "- **1 a 9**: O vendor possui produtos/tecnologias relevantes mencionadas e uma aderência parcial ou total às funcionalidades requeridas, mas com variações na qualidade, profundidade ou completude do atendimento. Uma pontuação mais alta reflete maior e melhor aderência. Avalie a capacidade do produto/tecnologia mencionada no vendor de atender às funcionalidades da RFP, **desconsiderando aspectos de dimensionamento (sizing, como throughput, sessões, interfaces, etc.) nesta etapa**.\n"
+            "- **10 (dez)**: O vendor atende de forma excepcional e abrangente a todas as funcionalidades da RFP, sem ressalvas, e as informações fornecidas indicam uma forte compatibilidade funcional com os requisitos detalhados.\n"
+            "Explique o motivo da nota de forma concisa mas **altamente detalhada**, indicando as principais **funcionalidades/características atendidas** e, **CRUCIALMENTE, as funcionalidades ou características ESPECÍFICAS que NÃO SÃO ATENDIDAS, SÃO ATENDIDAS PARCIALMENTE, ou ONDE HÁ PONTOS FRACOS/LACUNAS CLARAS na oferta do vendor em relação à RFP.** Não use frases genéricas como 'sem confirmação de compatibilidade total'. Seja direto sobre o que aparentemente não atende ou atende parcialmente, com base nas informações fornecidas.\n"
+            "**Não leve em consideração aspectos de dimensionamento (sizing) ao atribuir a nota ou o motivo.**\n"
+            "Sua resposta DEVE ser **APENAS** o JSON, sem nenhum outro texto, preâmbulo ou comentário. "
+            "Apresente o JSON no seguinte formato:\n"
+            "```json\n"
+            "[\n"
+            "  {'vendor': '<nome_do_vendor>', 'score': <0-10>, 'motivo': '<texto_explicativo>'},\n"
+            "  // ... para cada vendor\n"
+            "]\n"
+            "```\n"
+            "\n## Resumo da RFP:\n" + rfp.resumo_ia +
+            "\n\n## Vendors:\n" + vendors_info +
+            "\n\nLembre-se: Responda APENAS com o JSON. Não inclua nenhum outro texto."
+            )
 
     # Instantiate client with selected provider
     client = OpenAI(api_key=provider.api_key)
+    #client = OpenAI(
+    #    api_key="AIzaSyAb1jc89LKFKVsm8O6Tw0PfwAtMmpCYF14",
+    #    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    #    )
     # Chamada à LLM configurada
     response = client.chat.completions.create(
-        model=provider.model,
+        model="gpt-4.1",
+        #model="gemini-2.5-flash",
         messages=[
-            {"role": "system", "content": "Você é um consultor técnico de pré-vendas."},
+            {"role": "system", "content": (
+                "Você é um consultor técnico especializado em pré-vendas. Sua função é analisar **exclusivamente** o 'Resumo da RFP' e a 'Lista de Vendors' fornecidos. **NÃO invente ou utilize conhecimento externo sobre modelos ou detalhes de produtos específicos não mencionados explicitamente**, mas interprete a **relevância e potencial adequação** de produtos e tecnologias *mencionadas nos vendors* em relação às **funcionalidades e características** dos requisitos da RFP. **Não considere aspectos de dimensionamento (sizing) ou performance ao avaliar a aderência nesta análise.**\n"
+                "Seu objetivo é avaliar a aderência de cada vendor aos requisitos da RFP, com foco especial nas **funcionalidades e características** detalhadas na RFP.\n"
+                "Atribua uma pontuação de 0 a 10 para cada vendor, seguindo as diretrizes de escala abaixo, e justifique a nota com base **apenas** nas informações da RFP e do vendor. Sua justificativa deve ser minuciosa, detalhando como as funcionalidades são atendidas (ou não). **Para notas de 1 a 9, a justificativa DEVE indicar as funcionalidades ou características ESPECÍFICAS que não são atendidas, são atendidas apenas parcialmente, ou onde há lacunas evidentes na oferta do vendor com base no resumo da RFP.** Não use termos genéricos como 'sem confirmação de compatibilidade total'.\n"
+                "**Critérios de Pontuação:**\n"
+                "- **0 (zero)**: Incompatibilidade total com o tipo de solução da RFP (ex: RFP de hardware, vendor que só oferece software ou serviços não relacionados), ou sua descrição **não apresenta nenhum produto/tecnologia relevante** que sequer comece a atender às funcionalidades gerais da RFP.\n"
+                "- **1 a 9**: O vendor possui produtos/tecnologias relevantes mencionadas e uma aderência parcial ou com lacunas às funcionalidades, ou aderência total com espaço para melhoria na qualidade/profundidade do atendimento das funcionalidades. Pontuações intermediárias (1-9) são esperadas para a maioria dos casos. Quanto mais alta a nota, maior a proximidade com o atendimento completo e de alta qualidade das funcionalidades, **sem considerar o dimensionamento (sizing)**. Avalie se o tipo de solução ou produto do vendor *parece ser capaz de atender* às funcionalidades da RFP, mesmo que esses detalhes não estejam *explicitamente* no perfil do vendor. A justificativa DEVE ser específica sobre as lacunas ou atendimentos parciais.\n"
+                "- **10 (dez)**: Atendimento excepcional e abrangente a *todas* as funcionalidades da RFP, sem ressalvas, e as informações fornecidas indicam uma forte e clara compatibilidade com as **funcionalidades detalhadas da RFP**, **ignorando quaisquer aspectos de dimensionamento (sizing)**.\n"
+                "Responda estritamente no formato JSON solicitado, sem comentários extras."
+            )},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=4096,
-        temperature=0.2
+        #max_tokens=10000,
+        #temperature=0.2
     )
     import json
     # Extrair JSON da resposta
@@ -366,15 +390,18 @@ def analyze_rfp(rfp_id: int, db: Session = Depends(get_db), current_user: User =
         model=provider.model,
         messages=[
             {"role": "system", "content": (
-                "Você é um Analista de Pré-Vendas e Comercial Sênior, especializado em analisar RFPs (Request for Proposal). "
-                "Seu objetivo é interpretar documentos de RFP enviados, extrair as informações mais importantes, identificar riscos ou lacunas, "
-                "e apresentar a análise de forma organizada, consultiva e clara em Markdown. "
+                "Seu objetivo é interpretar documentos de RFP enviados, extrair **APENAS** as informações mais importantes diretamente do texto fornecido, "
+                "identificar riscos ou lacunas, e apresentar a análise de forma organizada, consultiva e clara em Markdown. "
+                "Para equipamentos no item 4, quando um modelo específico não for fornecido, você deve extrair e detalhar as **especificações mínimas técnicas** (ex: portas, velocidades, throughput, sessões, features avançadas, etc.) que são cruciais para o sizing e a seleção correta do equipamento. "
                 "Use títulos e listas para estruturar o conteúdo. "
-                "Se alguma informação estiver ausente, aponte claramente como 'Informação não fornecida - recomendar esclarecimento'. "
-                "Seja técnico, profissional e objetivo."
+                "**NUNCA invente ou infira informações que não estejam explicitamente presentes na RFP.** "
+                "Se alguma informação estiver ausente ou não permitir o sizing, aponte claramente como 'Informação não fornecida - recomendar esclarecimento'. "
+                "Seja técnico, profissional e objetivo. Responda exclusivamente com base no conteúdo da RFP."
             )},
             {"role": "user", "content": (
-                "Analise o seguinte conteúdo de RFP, leve em consideração as informações fornecidas em todo o conteúdo da RFP, inclusive anexos ou descrições de especificação técnica, e estruture a resposta em Markdown seguindo rigorosamente este formato, preenchendo TODOS os tópicos, mesmo que a informação não esteja presente (neste caso, escreva 'Informação não fornecida - recomendar esclarecimento').\n"
+                "Analise o seguinte conteúdo de RFP. Para cada item, extraia as informações **diretamente** da RFP (incluindo anexos ou descrições de especificação técnica se fornecidos). "
+                "Estruture a resposta em Markdown seguindo **RIGOROSAMENTE** este formato, preenchendo **TODOS** os tópicos. "
+                "Se a informação para um tópico não estiver explicitamente presente na RFP, escreva 'Informação não fornecida - recomendar esclarecimento'.\n"
                 "\n## 1. Identificação Geral\n"
                 "- **Nome do Projeto:** <preencher>\n"
                 "- **Cliente:** <preencher>\n"
@@ -388,16 +415,17 @@ def analyze_rfp(rfp_id: int, db: Session = Depends(get_db), current_user: User =
                 "- **Tecnologias envolvidas:** <preencher>\n"
                 "- **Quantitativos estimados:** <preencher>\n"
                 "\n## 4. Equipamentos e Serviços Detalhados\n"
-                "Liste os equipamentos e serviços solicitados, preenchendo as tabelas abaixo:\n"
+                "Liste os equipamentos e serviços solicitados, preenchendo as tabelas abaixo. "
+                "Para o campo 'Modelo/Descrição' de equipamentos, se um modelo específico não for fornecido, detalhe as **especificações técnicas mínimas** extraídas da RFP que são essenciais para o sizing (por exemplo: para firewall: quantidade e modelos de interfaces, throughput esperado, quantidade de VPNs esperadas, sessões simultâneas; para switch: quantidade de portas, velocidades, features avançadas, capacidade de empilhamento, etc.). essas informações devem ser completas porém direta ao ponto, por exemplo interfaces: 1x 10G SFP+ e 1x 1G SFP, throughput: 10Gbps, sessões: 100.000, etc.\n"
+                "Se a RFP não contiver informações suficientes para determinar o modelo ou o sizing, indique 'Informação não fornecida - recomendar esclarecimento' na célula correspondente.\n"
                 "\n### Equipamentos\n"
-                "| Equipamento | Modelo/Descrição | Quantidade | Observações |\n"
-                "|:------------|:------------------|:-----------|:------------|\n"
-                "| <preencher> | <preencher>       | <preencher>| <preencher> |\n"
+                "| Equipamento | Modelo/Descrição | Quantidade | Observações | Especificações Mínimas |\n"
+                "|:------------|:------------------|:-----------|:------------|:------------|\n"
+                "| <preencher> | <preencher>       | <preencher>| <preencher> |<preencher> |\n"
                 "\n### Serviços\n"
                 "| Serviço | Descrição resumida | Observações |\n"
                 "|:--------|:-------------------|:------------|\n"
                 "| <preencher> | <preencher> | <preencher> |\n"
-                "\n**Nota:** Se algum dado como modelo, quantidade ou descrição técnica não estiver presente, indicar 'Informação não fornecida - recomendar esclarecimento'.\n"
                 "\n## 5. Requisitos Obrigatórios\n"
                 "- <preencher>\n"
                 "\n## 6. Requisitos Desejáveis\n"
@@ -417,11 +445,10 @@ def analyze_rfp(rfp_id: int, db: Session = Depends(get_db), current_user: User =
                 "\n## 12. Perguntas ou Pontos a Esclarecer\n"
                 "- <preencher>\n"
                 "\n---\n"
-                "**DICAS DE FORMATAÇÃO:**\n"
-                "- Use sempre listas ou tópicos para respostas longas.\n"
-                "- Nunca deixe um item sem resposta (caso contrário, escreva 'Informação não fornecida - recomendar esclarecimento').\n"
-                "- Use negrito para títulos internos dos tópicos.\n"
-                "- Separe visualmente os tópicos com linhas em branco.\n"
+                "**Instruções de Formatação e Conteúdo Adicionais:**\n"
+                "- Sempre use listas ou tópicos para respostas longas e para os itens 2, 5, 6, 7, 9, 11 e 12.\n"
+                "- Use negrito para títulos internos dos tópicos (ex: **Nome do Projeto**).\n"
+                "- Separe visualmente os tópicos com linhas em branco para melhor legibilidade.\n"
                 "- Respeite o layout Markdown para garantir legibilidade, mesmo para textos extensos.\n"
                 f"\n\nConteúdo da RFP:\n{text}"
             )}
@@ -429,8 +456,9 @@ def analyze_rfp(rfp_id: int, db: Session = Depends(get_db), current_user: User =
         max_tokens=10000,
         temperature=0.3
     )
+# Extrair o resumo da resposta
     resumo = response.choices[0].message.content
-    # Salvar o resumo IA no banco e atualizar status
+# Salvar o resumo IA no banco e atualizar status
     rfp.resumo_ia = resumo
     rfp.status = "Análise IA"
     db.commit()

@@ -8,6 +8,10 @@ import os
 from openai import OpenAI
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client2 = OpenAI(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
 
 class BoMItemCreate(BaseModel):
     descricao: str
@@ -77,31 +81,40 @@ def generate_bom_ia(rfp_id: int, db: Session = Depends(get_db), current_user: Us
         raise HTTPException(status_code=404, detail="Fabricante não encontrado")
 
     prompt = f"""
-Você é um especialista em pré-vendas de tecnologia. Crie um BoM (Bill of Materials) detalhado para a RFP abaixo, considerando as melhores práticas do fabricante selecionado, equipamentos atuais, módulos e licenças recomendadas.
+Com base nos requisitos abaixo e nas informações do fabricante, por favor, me forneça uma recomendação de sizing de equipamentos detalhada.
 
-Resumo da RFP:
+Resumo dos Requisitos do Projeto:
 {rfp.resumo_ia}
 
-Fabricante Selecionado:
-Nome: {fabricante.nome}
-Tecnologias: {fabricante.tecnologias}
-Produtos: {fabricante.produtos}
-Certificações: {fabricante.certificacoes}
-Requisitos Atendidos: {fabricante.requisitos_atendidos}
+Fabricante Selecionado: {fabricante.nome}
 
-Responda APENAS em JSON, lista de itens no formato:
+
+Formato de Resposta JSON:
 [
-  { '{' }"descricao": <string>, "modelo": <string>, "part_number": <string>, "quantidade": <int>{ '}' },
-  ...
+
+{ '{' }"descricao": <descrição do partnumber resumida, maximo de 30 caracteres>, "modelo": < modelo do produto selecionado >, "part_number": <partnumber real do produto>, "quantidade": < quantidade >{ '}' },
+
+...
+
 ]
-Inclua módulos, licenças e equipamentos essenciais. Não adicione comentários fora do JSON.
 """
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1500,
+        model="gpt-4o",
+        messages=[{"role": "system", "content": ("Você é um Engenheiro de Soluções Sênior, especialista em dimensionamento (sizing) de hardware e software para projetos de tecnologia. Sua tarefa é analisar os requisitos de um projeto e as especificações de um fabricante para recomendar o equipamento ideal.\n"
+            "\n"
+            "Suas diretrizes são:\n"
+            "1.  **Priorize o Dimensionamento Adequado:** O equipamento recomendado deve atender ou superar as especificações dos requisitos, garantindo que não seja subdimensionado.\n"
+            "2.  **Otimização de Custo-Benefício:** Evite equipamentos excessivamente superdimensionados que possam encarecer o projeto desnecessariamente. o Equipamento deve ser o menor possível que atenda as especificações.\n"
+            "3.  **Componentes Abrangentes:** Adicione os acessórios, licenciamento, suporte e garantia do fabricante conforme especificação.\n"
+            "4.  **Consistência do Suporte/Garantia:** O nível de suporte e garantia deve ser compatível com os part numbers dos itens de hardware e licenciamento recomendados.\n"
+            "5.  **Autenticidade:** Não invente part numbers, modelos de equipamentos ou licenças. Use apenas informações que possam ser inferidas dos dados fornecidos ou que sejam de conhecimento comum de produtos do fabricante. Se não tiver certeza, indique uma recomendação genérica ou um placeholder claro.\n"
+            "6.  **Formato de Saída:** Responda APENAS com um objeto JSON.\n"
+        )},
+        {"role": "user", "content": prompt}],
+        max_tokens=15000,
         temperature=0.2
     )
+
     import json, re
     content = response.choices[0].message.content
     # Extrair JSON da resposta
