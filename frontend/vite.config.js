@@ -1,42 +1,46 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 // Configuração padrão
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: {
-    host: '0.0.0.0',
+    host: "0.0.0.0",
     port: 5173,
     strictPort: true,
     hmr: {
-      host: ['rfp.gustavotadeu.com.br', 'rfp2.gustavotadeu.com.br',]
+      host: [
+        "rfp.gustavotadeu.com.br",
+        "rfp2.gustavotadeu.com.br",
+        "rfp.oci.gustavotadeu.com.br",
+      ],
     },
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
+      "/api": {
+        target: "http://localhost:8000",
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      }
+        rewrite: (path) => path.replace(/^\/api/, ""),
+      },
     },
     preview: {
       host: true,
       port: 4173,
       strictPort: true,
       // 🚨 Esta linha é essencial para permitir o host personalizado
-      allowedHosts: ['rfp.gustavotadeu.com.br', 'rfp2.gustavotadeu.com.br',]
-    }
+      allowedHosts: ["rfp.gustavotadeu.com.br", "rfp2.gustavotadeu.com.br"],
+    },
   },
   build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
+    outDir: "dist",
+    assetsDir: "assets",
     sourcemap: false,
-    minify: 'terser',
+    minify: "terser",
     terserOptions: {
       compress: {
         drop_console: true,
-        drop_debugger: true
-      }
-    }
-  }
+        drop_debugger: true,
+      },
+    },
+  },
 }));
